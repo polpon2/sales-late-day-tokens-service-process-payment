@@ -31,3 +31,18 @@ def process_payment(db: Session, username: str, price: int):
             return True # payment success
         return False
     return False
+
+
+def create_token(db: Session, token_name: str, price: str):
+    token = get_token_by_name(db=db, token_name=token_name)
+    if (token is None):
+        db_token = models.Token(token_name=token_name, price=price)
+        db.add(db_token)
+        db.commit()
+        db.refresh(db_token)
+        return db_token
+
+
+def init_token(db: Session):
+    for i in range(10):
+        create_token(db=db, token_name="a" + i, price= i + 1)
