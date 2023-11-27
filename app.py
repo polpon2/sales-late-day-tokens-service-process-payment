@@ -34,8 +34,11 @@ def callback(ch, method, properties, body):
     if (user):
         crud.create_user(db=db, username=username)
     if (token):
-        crud.process_payment(db=db, username=username, price=token.price * amount)
-        print(f"create order")
+        is_success = crud.process_payment(db=db, username=username, price=token.price * amount)
+        if (is_success):
+            print(f"create payment")
+        else:
+            print("Roll back")
     else:
         print("Roll back")
     

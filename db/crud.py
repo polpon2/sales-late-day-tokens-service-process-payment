@@ -5,7 +5,7 @@ from sqlalchemy.exc import NoResultFound
 from . import models, schemas
 from datetime import datetime
 
-def create_user(db: Session, username):
+def create_user(db: Session, username: str):
     db_user = models.User(username=username, credits=100)
     db.add(db_user)
     db.commit()
@@ -29,5 +29,5 @@ def process_payment(db: Session, username: str, price: int):
             db.query(models.User).filter(models.User.id == username).update({'credits': user.credits - price})
             db.commit()
             return True # payment success
-        else:
-            return False
+        return False
+    return False
