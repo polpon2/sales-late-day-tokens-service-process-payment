@@ -12,10 +12,7 @@ from sqlalchemy import create_engine
 from db import crud, models
 from db.engine import SessionLocal, engine
 
-
-
 load_dotenv()
-models.Base.metadata.create_all(bind=engine)
 
 
 def callback(ch, method, properties, body):
@@ -31,7 +28,7 @@ def callback(ch, method, properties, body):
     db: Session = SessionLocal()
     token = crud.get_token_by_name(db=db, token_name=token_name)
 
-    
+
     user = crud.create_user(db=db, username=username)
     if (token):
         print(f"token.price: {token.price}")
@@ -46,7 +43,7 @@ def callback(ch, method, properties, body):
     else:
         print('outer')
         print("Roll back")
-    
+
 
     ch.queue_declare(queue='from.payment')
 
@@ -67,6 +64,10 @@ def main():
     except:
         connection = pika.BlockingConnection(pika.ConnectionParameters(host='localhost'))
 
+    models.Base.metadata.create_all(bind=engine)
+    db: Session = SessionLocal()
+    crud.create_token(db=db, token_name='token1', price=2)
+
     channel = connection.channel()
 
     channel.queue_declare(queue='to.payment', arguments={
@@ -82,8 +83,6 @@ def main():
 
 if __name__ == '__main__':
     try:
-        db: Session = SessionLocal()
-        token = crud.create_token(db=db, token_name='token1', price=2)
         main()
     except KeyboardInterrupt:
         print('Interrupted')
