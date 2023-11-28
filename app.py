@@ -30,16 +30,21 @@ def callback(ch, method, properties, body):
     # Create payment.
     db: Session = SessionLocal()
     token = crud.get_token_by_name(db=db, token_name=token_name)
-    user = crud.get_user_by_username(db=db, username=username)
-    if (user):
-        crud.create_user(db=db, username=username)
+
+    
+    user = crud.create_user(db=db, username=username)
     if (token):
-        is_success = crud.process_payment(db=db, username=username, price=token.price * amount)
+        print(f"token.price: {token.price}")
+        print(f"amount: {amount}")
+        print(f"total price: {token.price * amount}")
+        is_success = crud.process_payment(db=db, username=user.username, price=token.price * amount)
         if (is_success):
             print(f"create payment")
         else:
+            print('inner')
             print("Roll back")
     else:
+        print('outer')
         print("Roll back")
     
 
@@ -77,6 +82,8 @@ def main():
 
 if __name__ == '__main__':
     try:
+        db: Session = SessionLocal()
+        token = crud.create_token(db=db, token_name='token1', price=2)
         main()
     except KeyboardInterrupt:
         print('Interrupted')

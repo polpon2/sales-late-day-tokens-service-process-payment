@@ -2,15 +2,19 @@ from sqlalchemy.orm import Session
 from sqlalchemy.sql.expression import func
 from sqlalchemy.exc import NoResultFound
 
-from . import models, schemas
-from datetime import datetime
+from . import models
+
 
 def create_user(db: Session, username: str):
-    db_user = models.User(username=username, credits=100)
-    db.add(db_user)
-    db.commit()
-    db.refresh(db_user)
-    return db_user
+    user = get_user_by_username(db=db, username=username)
+    if (user):
+        return user
+    else:
+        db_user = models.User(username=username, credits=100)
+        db.add(db_user)
+        db.commit()
+        db.refresh(db_user)
+        return db_user
 
 def get_user_by_username(db: Session, username: str):
     return db.query(models.User).filter(models.User.username == username).first()
@@ -24,9 +28,13 @@ def get_token_by_name(db: Session, token_name: str):
 
 def process_payment(db: Session, username: str, price: int):
     user = db.query(models.User).filter(models.User.username == username).first()
+    print(f'user: {user.username}')
     if (user):
-        if (user.credits - price < 0):
-            db.query(models.User).filter(models.User.id == username).update({'credits': user.credits - price})
+        print(f"user credit: {user.credits}")
+        print(f"price: {price}")
+        if (user.credits - price > 0):
+            print(f"remaind credits: {user.credits - price}")
+            db.query(models.User).filter(models.User.username == username).update({'credits': user.credits - price})
             db.commit()
             return True # payment success
         return False
