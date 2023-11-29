@@ -1,4 +1,6 @@
 import asyncio, aio_pika, json
+from async_timeout import timeout
+from asyncio import TimeoutError
 from db.engine import SessionLocal, engine
 from db import crud, models
 
@@ -7,44 +9,52 @@ async def process_message(
     connection: aio_pika.Connection,  # Add connection parameter
 ) -> None:
     async with message.process():
-        body: dict = json.loads(message.body)
+        try:
+            async with timeout(1.5):
+                body: dict = json.loads(message.body)
 
-        username: str = body['username']
-        amount: int = body['amount']
+                username: str = body['username']
+                amount: int = body['amount']
 
-        print(f" [x] Received {body}")
+                print(f" [x] Received {body}")
 
-        # Create Payment.
-        async with SessionLocal() as db:
-            try:
-                user = await crud.create_user(db=db, username=username, init_credits=500)
-            except Exception as e:
-                print(e)
+                # Create Payment.
+                async with SessionLocal() as db:
+                    try:
+                        user = await crud.create_user(db=db, username=username, init_credits=500)
+                    except Exception as e:
+                        print(e)
 
-            if (user.credits - 1 < 0):
-                # Roll Back from Payment (INSUFFICIENT_FUND)
-                await process_rb_status(message=message, connection=connection, status="INSUFFICIENT_FUND")
-                print("Roll Back")
-                return
-            else:
-                is_success = await crud.process_payment(db=db, username=user.username, price=1)
+                    if (user.credits - 1 < 0):
+                        # Roll Back from Payment (INSUFFICIENT_FUND)
+                        await process_rb_status(message=message, connection=connection, status="INSUFFICIENT_FUND")
+                        print("Roll Back")
+                        return
+                    else:
+                        is_success = await crud.process_payment(db=db, username=user.username, price=1)
 
-            if (is_success):
-                routing_key = "from.payment"
+                    if (is_success):
+                        routing_key = "from.payment"
 
-                channel = await connection.channel()
+                        channel = await connection.channel()
 
-                await channel.default_exchange.publish(
-                    aio_pika.Message(body=message.body),
-                    routing_key=routing_key,
-                )
-                await db.commit()
-            else:
-                # Roll Back from Payment
-                await process_rb_status(message=message, connection=connection)
-                print("Roll Back")
-                return
-
+                        await channel.default_exchange.publish(
+                            aio_pika.Message(body=message.body),
+                            routing_key=routing_key,
+                        )
+                        await db.commit()
+                    else:
+                        # Roll Back from Payment
+                        await process_rb_status(message=message, connection=connection)
+                        print("Roll Back")
+                        return
+        except TimeoutError:
+            # Roll Back from Timed Out
+            await process_rb_status(message=message, connection=connection, status="TIMEOUT")
+            print("Timed Out Rolling Back....")
+        except Exception as e:
+            await process_rb_status(message=message, connection=connection)
+            print(f"Error: {e}, Rolling Back...")
 
 async def process_rb(
     message: aio_pika.abc.AbstractIncomingMessage,
