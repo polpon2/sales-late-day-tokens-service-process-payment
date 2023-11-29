@@ -54,12 +54,12 @@ async def process_rb(
         body: dict = json.loads(message.body)
 
         username = body["username"]
-        initial_money = body["initial_money"]
+        price_taken = body["price"]
 
         print(f" [x] Rolling Back {body}")
 
         async with SessionLocal() as db:
-            is_done = await crud.change_money(db, username=username, initial_money=initial_money)
+            is_done = await crud.change_money(db, username=username, price_taken=price_taken)
             if is_done:
                 channel = await connection.channel()
 

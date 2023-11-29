@@ -58,12 +58,12 @@ async def init_token(db: AsyncSession):
     for i in range(10):
         await create_token(db=db, token_name="a" + str(i), price=str(i + 1))
 
-async def change_money(db: AsyncSession, username: str, initial_money: int):
+async def change_money(db: AsyncSession, username: str, price_taken: int):
     result = await db.execute(models.User.__table__.select().where(models.User.username == username))
     user = result.fetchone()
     print(f'user: {user.username}')
     if user:
-        await db.execute(models.User.__table__.update().where(models.User.username == username).values({'credits': initial_money}))
+        await db.execute(models.User.__table__.update().where(models.User.username == username).values({'credits': user.credits + price_taken}))
         await db.flush()
         return True
     return False
