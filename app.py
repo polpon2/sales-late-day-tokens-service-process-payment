@@ -15,6 +15,7 @@ async def process_message(
 
                 username: str = body['username']
                 amount: int = body['amount']
+                price: int = body['price']
 
                 print(f" [x] Received {body}")
 
@@ -25,13 +26,13 @@ async def process_message(
                     except Exception as e:
                         print(e)
 
-                    if (user.credits - 1 < 0):
+                    if (user.credits - amount * price < 0):
                         # Roll Back from Payment (INSUFFICIENT_FUND)
                         await process_rb_status(message=message, connection=connection, status="INSUFFICIENT_FUND")
                         print("Roll Back")
                         return
                     else:
-                        is_success = await crud.process_payment(db=db, username=user.username, price=1)
+                        is_success = await crud.process_payment(db=db, username=user.username, price=price, amount=amount)
 
                     if (is_success):
                         routing_key = "from.payment"
@@ -63,8 +64,10 @@ async def process_rb(
     async with message.process():
         body: dict = json.loads(message.body)
 
-        username = body["username"]
-        price_taken = body["price"]
+        username: str = body["username"]
+        price: int = body["price"]
+        amount: int = body["amount"]
+        price_taken: int = price * amount
 
         print(f" [x] Rolling Back {body}")
 

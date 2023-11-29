@@ -29,16 +29,16 @@ async def get_token_by_name(db: AsyncSession, token_name: str):
         return result.scalar()
     return result
 
-async def process_payment(db: AsyncSession, username: str, price: int):
+async def process_payment(db: AsyncSession, username: str, price: int, amount: int):
     result = await db.execute(models.User.__table__.select().where(models.User.username == username))
     user = result.fetchone()
     print(f'user: {user.username}')
     if user:
         print(f"user credit: {user.credits}")
-        print(f"price: {price}")
-        if user.credits - price >= 0:
-            print(f"remaining credits: {user.credits - price}")
-            await db.execute(models.User.__table__.update().where(models.User.username == username).values({'credits': user.credits - price}))
+        print(f"price: {price * amount}")
+        if user.credits - price * amount >= 0:
+            print(f"remaining credits: {user.credits - price * amount}")
+            await db.execute(models.User.__table__.update().where(models.User.username == username).values({'credits': user.credits - price * amount}))
             await db.flush()
             return True  # payment success
         return False
