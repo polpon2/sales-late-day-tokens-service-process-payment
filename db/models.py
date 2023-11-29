@@ -9,12 +9,9 @@ class User(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String(255), unique=True, index=True)
-    credits = Column(Integer, default=100)
+    credits = Column(Integer, default=5)
 
-class Token(Base):
-    __tablename__ = "tokens"
-    id = Column(Integer, primary_key=True, index=True)
-    token_name = Column(String(255), unique=True, index=True)
-    price = Column(Integer)
+    def __repr__(self):
+        return f"<User(username={self.username}, credit={self.credits})>"
 
 

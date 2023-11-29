@@ -1,56 +1,59 @@
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.expression import func
 from sqlalchemy.exc import NoResultFound
-
 from . import models
 
-
-def create_user(db: Session, username: str):
-    user = get_user_by_username(db=db, username=username)
-    if (user):
+async def create_user(db: AsyncSession, username: str):
+    user = await get_user_by_username(db=db, username=username)
+    if user:
         return user
     else:
-        db_user = models.User(username=username, credits=100)
+        db_user = models.User(username=username, credits=5)
         db.add(db_user)
-        db.commit()
-        db.refresh(db_user)
+        await db.flush()
         return db_user
 
-def get_user_by_username(db: Session, username: str):
-    return db.query(models.User).filter(models.User.username == username).first()
+async def get_user_by_username(db: AsyncSession, username: str):
+    result = await db.execute(models.User.__table__.select().where(models.User.username == username))
+    if result is not None:
+        return result.scalar()
+    return None
 
+async def get_user(db: AsyncSession, user_id: int):
+    result = await db.execute(models.User.__table__.select().where(models.User.id == user_id))
+    return await result.scalar() if result else result
 
-def get_user(db: Session, user_id: int):
-    return db.query(models.User).filter(models.User.id == user_id).first()
+async def get_token_by_name(db: AsyncSession, token_name: str):
+    result = await db.execute(models.Token.__table__.select().where(models.Token.token_name == token_name))
+    if result is not None:
+        return result.scalar()
+    return result
 
-def get_token_by_name(db: Session, token_name: str):
-    return db.query(models.Token).filter(models.Token.token_name == token_name).first()
-
-def process_payment(db: Session, username: str, price: int):
-    user = db.query(models.User).filter(models.User.username == username).first()
+async def process_payment(db: AsyncSession, username: str, price: int):
+    result = await db.execute(models.User.__table__.select().where(models.User.username == username))
+    user = result.fetchone()
     print(f'user: {user.username}')
-    if (user):
+    if user:
         print(f"user credit: {user.credits}")
         print(f"price: {price}")
-        if (user.credits - price > 0):
-            print(f"remaind credits: {user.credits - price}")
-            db.query(models.User).filter(models.User.username == username).update({'credits': user.credits - price})
-            db.commit()
-            return True # payment success
+        if user.credits - price > 0:
+            print(f"remaining credits: {user.credits - price}")
+            await db.execute(models.User.__table__.update().where(models.User.username == username).values({'credits': user.credits - price}))
+            await db.flush()
+            return True  # payment success
         return False
     return False
 
-
-def create_token(db: Session, token_name: str, price: str):
-    token = get_token_by_name(db=db, token_name=token_name)
-    if (token is None):
+async def create_token(db: AsyncSession, token_name: str, price: str):
+    result = await db.execute(models.Token.__table__.select().where(models.Token.token_name == token_name))
+    token = await result.scalar()
+    if not token:
         db_token = models.Token(token_name=token_name, price=price)
-        db.add(db_token)
-        db.commit()
-        db.refresh(db_token)
+        async with db.begin():
+            db.add(db_token)
+            await db.flush()
         return db_token
 
-
-def init_token(db: Session):
+async def init_token(db: AsyncSession):
     for i in range(10):
-        create_token(db=db, token_name="a" + i, price= i + 1)
+        await create_token(db=db, token_name="a" + str(i), price=str(i + 1))

@@ -1,92 +1,82 @@
-from typing import List
-import pika, sys, os, json
-from dotenv import load_dotenv
-
-import os
-from requests import Session
-
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy import create_engine
-
-from db import crud, models
+import asyncio, aio_pika, json
 from db.engine import SessionLocal, engine
+from db import crud, models
 
-load_dotenv()
+async def process_message(
+    message: aio_pika.abc.AbstractIncomingMessage,
+    connection: aio_pika.Connection,  # Add connection parameter
+) -> None:
+    async with message.process():
+        body: dict = json.loads(message.body)
 
+        username: str = body['username']
+        amount: int = body['amount']
 
-def callback(ch, method, properties, body):
-    body: dict = json.loads(body)
+        print(f" [x] Received {body}")
 
-    username: str = body['username']
-    token_name: str = body['token_name']
-    amount: int = body['amount']
+        # Create Payment.
+        async with SessionLocal() as db:
+            try:
+                user = await crud.create_user(db=db, username=username)
+            except Exception as e:
+                print(e)
 
-    print(f" [x] Received {body}")
+            if (user.credits - amount < 0):
+                # Roll Back from Payment
+                return
+            else:
+                is_success = await crud.process_payment(db=db, username=user.username, price=amount)
 
-    # Create payment.
-    db: Session = SessionLocal()
-    token = crud.get_token_by_name(db=db, token_name=token_name)
+            if (is_success):
+                routing_key = "from.payment"
 
+                channel = await connection.channel()
 
-    user = crud.create_user(db=db, username=username)
-    if (token):
-        print(f"token.price: {token.price}")
-        print(f"amount: {amount}")
-        print(f"total price: {token.price * amount}")
-        is_success = crud.process_payment(db=db, username=user.username, price=token.price * amount)
-        if (is_success):
-            print(f"create payment")
-        else:
-            print('inner')
-            print("Roll back")
-    else:
-        print('outer')
-        print("Roll back")
-
-
-    ch.queue_declare(queue='from.payment')
-
-    ch.basic_publish(exchange='',
-                        routing_key='from.payment',
-                        body=json.dumps(body))
-
-    print(f" [x] Sent {json.dumps(body)}")
-
-    ch.basic_ack(delivery_tag=method.delivery_tag)
-
-    return
+                await channel.default_exchange.publish(
+                    aio_pika.Message(body=message.body),
+                    routing_key=routing_key,
+                )
+            else:
+                # Roll Back from Payment
+                return
 
 
-def main():
-    try:
-        connection = pika.BlockingConnection(pika.ConnectionParameters(host='rabbit-mq', port=5672))
-    except:
-        connection = pika.BlockingConnection(pika.ConnectionParameters(host='localhost'))
+async def main() -> None:
+    connection = await aio_pika.connect_robust(
+        "amqp://rabbit-mq",
+    )
 
-    models.Base.metadata.create_all(bind=engine)
-    db: Session = SessionLocal()
-    crud.create_token(db=db, token_name='token1', price=2)
+    # Init the tables in db
+    async with engine.begin() as conn:
+        await conn.run_sync(models.Base.metadata.drop_all) # Reset every time
+        await conn.run_sync(models.Base.metadata.create_all)
 
-    channel = connection.channel()
 
-    channel.queue_declare(queue='to.payment', arguments={
-                          'x-message-ttl' : 1000,
-                          'x-dead-letter-exchange' : 'dlx',
-                          'x-dead-letter-routing-key' : 'dl'
-                          })
+    queue_name = "to.payment"
 
-    channel.basic_consume(queue='to.payment', on_message_callback=callback)
+    # Creating channel
+    channel = await connection.channel()
+
+    # Maximum message count which will be processing at the same time.
+    await channel.set_qos(prefetch_count=10)
+
+    # Declaring queue
+    queue = await channel.declare_queue(queue_name, arguments={
+                                                    'x-message-ttl' : 1000,
+                                                    'x-dead-letter-exchange' : 'dlx',
+                                                    'x-dead-letter-routing-key' : 'dl'
+                                                    })
 
     print(' [*] Waiting for messages. To exit press CTRL+C')
-    channel.start_consuming()
 
-if __name__ == '__main__':
+    await queue.consume(lambda message: process_message(message, connection))
+
     try:
-        main()
-    except KeyboardInterrupt:
-        print('Interrupted')
-        try:
-            sys.exit(0)
-        except SystemExit:
-            os._exit(0)
+        # Wait until terminate
+        await asyncio.Future()
+    finally:
+        await connection.close()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
