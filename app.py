@@ -22,7 +22,8 @@ async def process_message(
                 print(e)
 
             if (user.credits - 1 < 0):
-                # Roll Back from Payment
+                # Roll Back from Payment (INSUFFICIENT_FUND)
+                await process_rb_status(message=message, connection=connection, status="INSUFFICIENT_FUND")
                 print("Roll Back")
                 return
             else:
@@ -40,8 +41,58 @@ async def process_message(
                 await db.commit()
             else:
                 # Roll Back from Payment
+                await process_rb_status(message=message, connection=connection)
                 print("Roll Back")
                 return
+
+
+async def process_rb(
+    message: aio_pika.abc.AbstractIncomingMessage,
+    connection: aio_pika.Connection,  # Add connection parameter
+) -> None:
+    async with message.process():
+        body: dict = json.loads(message.body)
+
+        username = body["username"]
+        initial_money = body["initial_money"]
+
+        print(f" [x] Rolling Back {body}")
+
+        async with SessionLocal() as db:
+            is_done = await crud.change_money(db, username=username, initial_money=initial_money)
+            if is_done:
+                channel = await connection.channel()
+
+                await channel.default_exchange.publish(
+                    aio_pika.Message(body=message.body),
+                    routing_key="rb.order",
+                )
+
+                await db.commit()
+            else:
+                print("GG[1]")
+
+
+
+async def process_rb_status(
+    message: aio_pika.abc.AbstractIncomingMessage,
+    connection: aio_pika.Connection,  # Add connection parameter
+    status: str | None = None,
+) -> None:
+    body: dict = json.loads(message.body)
+
+    print(f" [x] Rolling Back {body}")
+
+    if status is not None:
+        body["status"] = status
+
+    # Could be from Delivery dying or Insufficient money
+    channel = await connection.channel()
+
+    await channel.default_exchange.publish(
+        aio_pika.Message(body=bytes(json.dumps(body), 'utf-8')),
+        routing_key="rb.order",
+    )
 
 
 async def main() -> None:
@@ -69,10 +120,12 @@ async def main() -> None:
                                                     'x-dead-letter-exchange' : 'dlx',
                                                     'x-dead-letter-routing-key' : 'dl'
                                                     })
+    queue_rb = await channel.declare_queue("rb.payment");
 
     print(' [*] Waiting for messages. To exit press CTRL+C')
 
     await queue.consume(lambda message: process_message(message, connection))
+    await queue_rb.consume(lambda message: process_rb(message, connection))
 
     try:
         # Wait until terminate

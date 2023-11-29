@@ -39,7 +39,7 @@ async def process_payment(db: AsyncSession, username: str, price: int):
         if user.credits - price >= 0:
             print(f"remaining credits: {user.credits - price}")
             await db.execute(models.User.__table__.update().where(models.User.username == username).values({'credits': user.credits - price}))
-            # await db.flush()
+            await db.flush()
             return True  # payment success
         return False
     return False
@@ -57,3 +57,13 @@ async def create_token(db: AsyncSession, token_name: str, price: str):
 async def init_token(db: AsyncSession):
     for i in range(10):
         await create_token(db=db, token_name="a" + str(i), price=str(i + 1))
+
+async def change_money(db: AsyncSession, username: str, initial_money: int):
+    result = await db.execute(models.User.__table__.select().where(models.User.username == username))
+    user = result.fetchone()
+    print(f'user: {user.username}')
+    if user:
+        await db.execute(models.User.__table__.update().where(models.User.username == username).values({'credits': initial_money}))
+        await db.flush()
+        return True
+    return False
