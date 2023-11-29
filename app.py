@@ -46,7 +46,7 @@ async def process_message(
 
 async def main() -> None:
     connection = await aio_pika.connect_robust(
-        "amqp://localhost",
+        "amqp://rabbit-mq",
     )
 
     # Init the tables in db
