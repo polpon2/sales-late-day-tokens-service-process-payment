@@ -3,12 +3,12 @@ from sqlalchemy.sql.expression import func
 from sqlalchemy.exc import NoResultFound
 from . import models
 
-async def create_user(db: AsyncSession, username: str):
+async def create_user(db: AsyncSession, username: str, init_credits: int):
     user = await get_user_by_username(db=db, username=username)
     if user:
         return user
     else:
-        db_user = models.User(username=username, credits=5)
+        db_user = models.User(username=username, credits=init_credits)
         db.add(db_user)
         await db.flush()
         return db_user
@@ -16,7 +16,7 @@ async def create_user(db: AsyncSession, username: str):
 async def get_user_by_username(db: AsyncSession, username: str):
     result = await db.execute(models.User.__table__.select().where(models.User.username == username))
     if result is not None:
-        return result.scalar()
+        return result.fetchone()
     return None
 
 async def get_user(db: AsyncSession, user_id: int):
@@ -36,10 +36,10 @@ async def process_payment(db: AsyncSession, username: str, price: int):
     if user:
         print(f"user credit: {user.credits}")
         print(f"price: {price}")
-        if user.credits - price > 0:
+        if user.credits - price >= 0:
             print(f"remaining credits: {user.credits - price}")
             await db.execute(models.User.__table__.update().where(models.User.username == username).values({'credits': user.credits - price}))
-            await db.flush()
+            # await db.flush()
             return True  # payment success
         return False
     return False

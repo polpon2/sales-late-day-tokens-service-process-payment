@@ -17,15 +17,16 @@ async def process_message(
         # Create Payment.
         async with SessionLocal() as db:
             try:
-                user = await crud.create_user(db=db, username=username)
+                user = await crud.create_user(db=db, username=username, init_credits=500)
             except Exception as e:
                 print(e)
 
-            if (user.credits - amount < 0):
+            if (user.credits - 1 < 0):
                 # Roll Back from Payment
+                print("Roll Back")
                 return
             else:
-                is_success = await crud.process_payment(db=db, username=user.username, price=amount)
+                is_success = await crud.process_payment(db=db, username=user.username, price=1)
 
             if (is_success):
                 routing_key = "from.payment"
@@ -36,14 +37,16 @@ async def process_message(
                     aio_pika.Message(body=message.body),
                     routing_key=routing_key,
                 )
+                await db.commit()
             else:
                 # Roll Back from Payment
+                print("Roll Back")
                 return
 
 
 async def main() -> None:
     connection = await aio_pika.connect_robust(
-        "amqp://rabbit-mq",
+        "amqp://localhost",
     )
 
     # Init the tables in db
