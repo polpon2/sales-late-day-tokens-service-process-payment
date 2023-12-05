@@ -34,6 +34,14 @@ async def process_message(
                 amount: int = body['amount']
                 price: int = body['price']
 
+                kill_payment: bool = body['kill_payment']
+                timeout_payment: bool = body['timeout_payment']
+
+                if kill_payment:
+                    raise Exception("Forced Kill Payment")
+                elif timeout_payment:
+                    await asyncio.sleep(5)
+
                 print(f" [x] Received {body}")
 
                 # Create Payment.
